@@ -1,0 +1,14 @@
+/rag_data/
+/collections/
+/aliases/
+/.deleted/
+qdrant_storage/
+
+.env
+app.ipynb
+new_app.py
+raft_state.json
+
+__pycache__/
+*.pyc
+.venv/
