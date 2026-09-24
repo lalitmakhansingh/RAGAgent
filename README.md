@@ -1,107 +1,572 @@
-# Agentic RAG System with PDF and Website Integration
+# 🤖 RAGAgent — Agentic Retrieval-Augmented Generation
 
-This project implements an **Agentic Retrieval-Augmented Generation (RAG)** system that allows users to retrieve answers from uploaded PDFs, specified website URLs, or a combination of both. The system uses an intelligent agent to decide whether a query can be answered based on the provided sources or needs to fall back on online searches.
+> A Streamlit-based Agentic RAG application for asking questions over PDF documents and websites, with semantic retrieval through Qdrant, Gemini embeddings and generation, and an online-search fallback when retrieved context is not relevant.
 
-## Key Features
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.40.1-FF4B4B?logo=streamlit)](https://streamlit.io/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20Database-red)](https://qdrant.tech/)
+[![Gemini](https://img.shields.io/badge/Google-Gemini-4285F4)](https://ai.google.dev/)
 
-1. **PDF Retrieval**: Upload PDF files and extract information for question answering.
-2. **Website Retrieval**: Provide URLs to extract and use content for answering queries.
-3. **Combined Query Handling**: Simultaneously process PDFs and URLs to retrieve answers.
-4. **Agent Logic**: 
-    - First checks if the answer exists in the uploaded PDF.
-    - If not found, checks the website content.
-    - If unavailable in both, declares the question as outside the RAG database and refrains from answering.
-5. **Fallback Search**: If no relevant information is found in the provided data, an online search is used to retrieve relevant context.
+## 📌 Overview
 
-## Tech Stack
+**RAGAgent** is an end-to-end Retrieval-Augmented Generation application for answering questions from user-provided knowledge sources.
 
-- **Streamlit**: User interface.
-- **PyPDF2**: Extract text from PDF files.
-- **BeautifulSoup**: Parse and clean website content.
-- **OpenAI API**: Generate embeddings and answer questions.
-- **Qdrant**: Vector database for semantic search.
-- **DuckDuckGo Search**: Online search fallback for out-of-database queries.
+You can:
+- 📄 Upload one or more PDF documents.
+- 🌐 Provide one or more website URLs.
+- 🕷️ Optionally discover same-domain links from supplied websites.
+- 🔎 Convert your data into embeddings and store them in Qdrant.
+- 💬 Ask questions through a Streamlit chat interface.
+- 🧠 Use an LLM-based relevance check before generating an answer from retrieved context.
+- 🌍 Fall back to DuckDuckGo search when indexed context is not relevant.
+- 💾 Reuse a locally persisted Qdrant collection across Streamlit sessions.
 
-## Installation
+The current implementation uses **Gemini** for embeddings and LLM generation and **local persistent Qdrant storage** through the Qdrant Python client.
 
-1. **Clone the Repository:**
-    ```bash
-    git clone https://github.com/rajveersinghcse/Agentic_RAG
-    cd Agentic_RAG
-    ```
+## ✨ Key Features
 
-2. **Install Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+### 📄 PDF Retrieval
+Upload multiple PDFs and extract their text using PyPDF2.
 
-3. **Set Up Qdrant:**
-    - Download and install [Qdrant](https://qdrant.tech/documentation/quick_start/).
-    - Start Qdrant on `http://localhost:6333`.
+### 🌐 Website Retrieval
+Enter comma-separated website URLs. The application downloads HTML, removes script/style content, extracts readable text, and indexes it.
 
-## Usage
+### 🕷️ Website Link Discovery
+When **Crawl entire website(s)** is enabled, the application discovers same-domain links from supplied starting pages before processing the discovered URLs.
 
-1. **Run the Application:**
-    ```bash
-    streamlit run app.py
-    ```
+### 🧩 Hybrid Knowledge Base
+PDF and website content can be indexed together. Each chunk keeps source metadata so retrieved information can be associated with its origin.
 
-2. **Configure API Key:**
-   - Enter your OpenAI API Key in the designated input field in the app.
+### 🔍 Semantic Search
+Questions are converted into embeddings and compared against indexed document vectors using cosine similarity in Qdrant.
 
-3. **Upload Data:**
-   - Upload PDF files or provide website URLs (comma-separated).
-   - Optionally, enable crawling to extract content from all linked pages.
+### 🧠 Agentic Routing
+Before generation, the application asks Gemini whether the retrieved context contains relevant information for the question.
 
-4. **Process Data:**
-   - Click "Process and Index Documents" to generate embeddings and store them in the Qdrant database.
+### 🌍 Online Search Fallback
+When indexed context is judged irrelevant, the application searches DuckDuckGo and uses the returned content as generation context.
 
-5. **Ask Questions:**
-   - Enter your question in the input field.
-   - The agent determines the source of the answer:
-       - Retrieves from PDF if present.
-       - Falls back to website if not in PDF.
-       - If neither, performs an online search (optional) or states that the question is outside the RAG database.
+### 💬 Conversational UI
+The application uses Streamlit chat components and session state to maintain the visible conversation history.
 
-## Agent Workflow
+## 🏗️ Architecture
 
-1. **PDF Search**: If the answer is found in the uploaded PDFs, it is retrieved and displayed.
-2. **Website Search**: If the answer is not in PDFs, it searches through the provided website content.
-3. **Fallback Search**: If neither source contains the answer, the question is identified as outside the RAG database.
+```text
+                    ┌──────────────────────┐
+                    │        User          │
+                    └──────────┬───────────┘
+                               │
+                    Upload PDFs / URLs
+                               │
+                 ┌─────────────▼─────────────┐
+                 │      Ingestion Layer      │
+                 │                           │
+                 │ PyPDF2 / BeautifulSoup    │
+                 └─────────────┬─────────────┘
+                               │
+                         Extracted Text
+                               │
+                 ┌─────────────▼─────────────┐
+                 │         Chunking          │
+                 │ RecursiveCharacter...     │
+                 └─────────────┬─────────────┘
+                               │
+                         Text Chunks
+                               │
+                 ┌─────────────▼─────────────┐
+                 │       Embeddings          │
+                 │    Gemini Embeddings      │
+                 └─────────────┬─────────────┘
+                               │
+                         Vector Data
+                               │
+                 ┌─────────────▼─────────────┐
+                 │         Qdrant            │
+                 │   Persistent Vector DB    │
+                 └─────────────┬─────────────┘
+                               │
+                         User Question
+                               │
+                 ┌─────────────▼─────────────┐
+                 │ Query Embedding + Search  │
+                 │      Top-k Retrieval      │
+                 └─────────────┬─────────────┘
+                               │
+                        Retrieved Context
+                               │
+                 ┌─────────────▼─────────────┐
+                 │      Gemini Judge         │
+                 │ Relevant context?         │
+                 └──────────┬───────┬────────┘
+                            │       │
+                          YES       NO
+                            │       │
+                 ┌──────────▼───┐  ┌▼────────────────┐
+                 │ Gemini Answer │  │ DuckDuckGo      │
+                 │ from context │  │ Web Search      │
+                 └───────┬───────┘  └───────┬────────┘
+                         │                  │
+                         │            Gemini Generation
+                         │                  │
+                         └─────────┬────────┘
+                                   ▼
+                              Final Answer
+```
 
-## Configuration
+## 🔄 RAG Workflow
 
-- **OpenAI API Key**: Required for embeddings and question-answering models.
-- **Qdrant**: Must be running locally or configured to a remote host in the code.
+### 1. Ingestion
 
-## Requirements
-- Python 3.8+ (I used 3.12.7)
-- Valid OpenAI API Key
-- Running instance of Qdrant
+```text
+PDF / Website
+     ↓
+Text extraction
+     ↓
+Cleaning
+     ↓
+Chunking
+```
 
-## Dependencies
+### 2. Indexing
 
-- `streamlit`
-- `PyPDF2`
-- `beautifulsoup4`
-- `qdrant-client`
-- `litellm`
-- `duckduckgo_search`
-- `langchain_text_splitters`
+```text
+Text chunks
+    ↓
+Gemini embedding model
+    ↓
+3072-dimensional vectors
+    ↓
+Qdrant collection
+```
 
-Install all dependencies with:
+### 3. Question Answering
+
+```text
+User question
+      ↓
+Question embedding
+      ↓
+Qdrant semantic search
+      ↓
+Top 3 relevant chunks
+      ↓
+Gemini relevance check
+     / \\
+   YES  NO
+    ↓    ↓
+ Gemini  DuckDuckGo
+    ↓    ↓
+    └─ Gemini ─┘
+         ↓
+    Final answer
+```
+
+## 🧰 Tech Stack
+
+| Technology | Purpose |
+|---|---|
+| **Python 3.10+** | Application runtime |
+| **Streamlit** | Web UI and chat interface |
+| **PyPDF2** | PDF text extraction |
+| **BeautifulSoup4** | HTML parsing and cleaning |
+| **LangChain Text Splitters** | Document chunking |
+| **Google Gemini Embeddings** | Convert text into vectors |
+| **Google Gemini Flash** | Relevance checking and answer generation |
+| **Qdrant** | Vector storage and semantic retrieval |
+| **LiteLLM** | Unified LLM completion interface |
+| **DuckDuckGo Search** | Web-search fallback |
+| **Requests** | HTTP requests |
+
+## 📁 Project Structure
+
+```text
+RAGAgent/
+│
+├── app.py                 # Main Streamlit application
+├── requirements.txt       # Python dependencies
+├── README.md              # Project documentation
+├── .gitignore             # Files excluded from Git
+│
+└── qdrant_storage/        # Generated local vector DB (ignored by Git)
+```
+
+> `qdrant_storage/` is runtime-generated local data and should normally not be committed to GitHub.
+
+## ⚙️ Installation
+
+### 1. Clone the repository
+
 ```bash
+git clone https://github.com/lalitmakhansingh/RAGAgent.git
+cd RAGAgent
+```
+
+### 2. Create a virtual environment
+
+Python 3.10 is recommended for the current dependency set.
+
+**Windows:**
+
+```powershell
+py -3.10 -m venv .venv
+.\\.venv\\Scripts\\Activate.ps1
+```
+
+**macOS / Linux:**
+
+```bash
+python3.10 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+## 🔑 API Key
 
-## FAQ
+The current implementation uses a **Google Gemini API key**.
 
-### What happens if I upload both PDFs and URLs?
-The agent processes both and prioritizes the PDFs. If the answer is not in PDFs, it checks the websites.
+Get a key from Google AI Studio:
 
-### Can it answer questions outside the uploaded data?
-No. If the answer isn't in the PDFs or URLs, the agent either performs an online search (if enabled) or states that it can't answer.
+👉 https://aistudio.google.com/apikey
 
-### What if the Qdrant server isn't running?
-Ensure Qdrant is properly installed and started on `localhost:6333` before indexing documents.
+The application asks for the key directly in the Streamlit interface:
+
+```text
+Enter your Gemini API Key:
+```
+
+### Security
+
+Never commit API keys to GitHub.
+
+Do not place secrets in:
+
+```text
+.env
+.streamlit/secrets.toml
+source code
+README.md
+```
+
+## ▶️ Running the Application
+
+Start Streamlit:
+
+```bash
+streamlit run app.py
+```
+
+Then open:
+
+```text
+http://localhost:8501
+```
+
+## 🧪 How to Use
+
+### Step 1 — Enter your Gemini API key
+
+Paste your Gemini API key into the application.
+
+### Step 2 — Add your knowledge sources
+
+You can either upload one or more PDFs, enter one or more website URLs, or use both together.
+
+Example:
+
+```text
+https://example.com
+```
+
+Multiple URLs:
+
+```text
+https://example.com, https://example.org
+```
+
+### Step 3 — Optional website crawling
+
+Enable:
+
+```text
+☑ Crawl entire website(s)
+```
+
+The application discovers same-domain links from the supplied starting pages and processes the discovered URLs.
+
+### Step 4 — Index the data
+
+Click:
+
+```text
+Process and Index Documents
+```
+
+The application extracts text, chunks it, generates embeddings, creates the Qdrant collection, and uploads vectors with source metadata.
+
+### Step 5 — Ask questions
+
+Once indexing completes, use the chat input to ask questions about your documents or websites.
+
+## 🧠 Agentic Decision Flow
+
+The application first retrieves the most similar chunks from Qdrant.
+
+It then asks Gemini whether the retrieved context contains relevant information.
+
+### Relevant context found
+
+```text
+Question
+   ↓
+Qdrant retrieval
+   ↓
+Relevant context
+   ↓
+Gemini generation
+   ↓
+Answer grounded in retrieved context
+```
+
+### Relevant context not found
+
+```text
+Question
+   ↓
+Qdrant retrieval
+   ↓
+Context judged irrelevant
+   ↓
+DuckDuckGo search
+   ↓
+Search results as context
+   ↓
+Gemini generation
+   ↓
+Answer
+```
+
+If the external search path also encounters an exception, the current code contains additional Gemini fallback handling.
+
+## 🔍 Retrieval Details
+
+The application uses:
+
+- **Chunk size:** 1000
+- **Chunk overlap:** 200
+- **Top-k retrieval:** 3
+- **Vector similarity:** Cosine similarity
+- **Vector size configured in Qdrant:** 3072
+
+Conceptually:
+
+```text
+Document
+   ↓
+Chunks
+   ↓
+Embedding vectors
+   ↓
+Qdrant
+```
+
+Then:
+
+```text
+Question
+   ↓
+Question embedding
+   ↓
+Similarity search
+   ↓
+Top 3 chunks
+```
+
+## 💾 Local Qdrant Storage
+
+This implementation uses:
+
+```python
+QdrantClient(path="qdrant_storage")
+```
+
+Therefore, it uses Qdrant's local persistent storage rather than requiring a separate Qdrant HTTP server for this version of the application.
+
+On a later Streamlit session, the application checks whether `qdrant_storage` exists and attempts to reconnect to the `agent_rag_index` collection.
+
+## 🧪 Example
+
+Suppose you upload:
+
+```text
+AI_Research.pdf
+```
+
+and ask:
+
+```text
+What is Retrieval-Augmented Generation?
+```
+
+The system performs:
+
+```text
+Question
+   ↓
+Embedding
+   ↓
+Qdrant search
+   ↓
+Relevant chunks from AI_Research.pdf
+   ↓
+Gemini relevance decision
+   ↓
+Gemini answer
+```
+
+If you instead ask something that is not represented in the indexed material, the application can move to the online search fallback.
+
+## 🧩 Core Components
+
+### `process_uploaded_pdfs()`
+
+Responsible for:
+
+```text
+PDF → extracted text
+```
+
+### `extract_text_from_url()`
+
+Responsible for:
+
+```text
+URL → HTML → cleaned text
+```
+
+### `get_embeddings()`
+
+Responsible for:
+
+```text
+Text → Gemini embedding vector
+```
+
+### `process_and_index_documents()`
+
+Responsible for:
+
+```text
+Documents
+ → chunks
+ → embeddings
+ → Qdrant collection
+```
+
+### `answer_question()`
+
+Responsible for:
+
+```text
+Question
+ → retrieval
+ → context assessment
+ → RAG generation / web fallback
+```
+
+## ⚠️ Current Limitations
+
+The current implementation is intentionally simple and has several areas that can be improved:
+
+- PDF extraction is text-based and may not correctly handle scanned/image-only PDFs.
+- Website extraction is basic HTML extraction rather than a production-grade crawler.
+- Link discovery is limited to links found on the supplied starting pages.
+- Re-indexing deletes and recreates the `agent_rag_index` collection.
+- Embeddings are requested one text at a time.
+- API keys are entered through the UI rather than managed through a deployment secret manager.
+- The relevance decision is based on an LLM response parsed as `1/0` or `yes/no`.
+- The web-search fallback depends on external search availability and rate limits.
+- The local Qdrant directory can become large as the dataset grows.
+
+## 🚀 Future Improvements
+
+Possible next iterations:
+
+### Better ingestion
+- OCR support for scanned PDFs.
+- Better HTML extraction.
+- Sitemap-based crawling.
+- Duplicate URL detection and normalization.
+
+### Better retrieval
+- Hybrid keyword + vector search.
+- Metadata filtering.
+- Reranking.
+- MMR retrieval.
+- Adjustable `top_k`.
+
+### Better agents
+- Explicit tool calling.
+- Multiple specialized tools.
+- Iterative agent loops.
+- Structured tool outputs.
+- Tool execution tracing.
+
+### Better production architecture
+- External Qdrant deployment.
+- Background indexing jobs.
+- Authentication.
+- Rate limiting.
+- Secret management.
+- Observability and evaluation.
+
+## 📌 Learning Value
+
+This project is useful for learning the core building blocks of modern AI applications:
+
+```text
+LLM
+ ↓
+Embeddings
+ ↓
+Vector Database
+ ↓
+Semantic Retrieval
+ ↓
+Context Injection
+ ↓
+Grounded Generation
+ ↓
+Tool / Search Fallback
+```
+
+It provides a practical foundation for progressing from basic RAG to Agentic AI, tool calling, MCP, multi-agent systems, evaluation, and production AI systems.
+
+## 👨‍💻 Author
+
+**Lalit Makhansingh**
+
+GitHub:
+
+👉 https://github.com/lalitmakhansingh
+
+Repository:
+
+👉 https://github.com/lalitmakhansingh/RAGAgent
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+## ⭐ Support
+
+If this project helps you understand RAG and Agentic AI, consider giving the repository a ⭐ on GitHub.
+
+---
+
+### Built with Python, Streamlit, Qdrant & Gemini ❤️
