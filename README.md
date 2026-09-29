@@ -499,4 +499,4 @@ If this project helps you understand RAG and Agentic AI, consider giving the rep
 
 ---
 
-### Built with Python, Streamlit, Qdrant & Gemini ❤️
+### Built with Python, Streamlit, Qdrant, Laya & Gemini ❤️
