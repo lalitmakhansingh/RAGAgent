@@ -41,10 +41,10 @@ PDF and website content can be indexed together. Each chunk keeps source metadat
 Questions are converted into embeddings and compared against indexed document vectors using cosine similarity in Qdrant.
 
 ### 🧠 Agentic Routing
-Before generation, the application asks Gemini whether the retrieved context contains relevant information for the question.
+Before generation, the application uses **Laya** as a local decision layer to determine whether the retrieved context is sufficient to answer the question. This replaces the previous Gemini judge call and reduces LLM usage on the normal RAG path.
 
 ### 🌍 Online Search Fallback
-When indexed context is judged irrelevant, the application searches DuckDuckGo and uses the returned content as generation context.
+When indexed context is judged insufficient, the application searches DuckDuckGo and uses the returned content as generation context.
 
 ### 💬 Conversational UI
 The application uses Streamlit chat components and session state to maintain the visible conversation history.
@@ -95,8 +95,8 @@ The application uses Streamlit chat components and session state to maintain the
                         Retrieved Context
                                │
                  ┌─────────────▼─────────────┐
-                 │      Gemini Judge         │
-                 │ Relevant context?         │
+                 │         Laya Gate         │
+                 │ Context sufficient?       │
                  └──────────┬───────┬────────┘
                             │       │
                           YES       NO
@@ -150,12 +150,12 @@ Qdrant semantic search
       ↓
 Top 3 relevant chunks
       ↓
-Gemini relevance check
+Laya context decision
      / \\
    YES  NO
     ↓    ↓
  Gemini  DuckDuckGo
-    ↓    ↓
+    ↓       ↓
     └─ Gemini ─┘
          ↓
     Final answer
@@ -171,7 +171,8 @@ Gemini relevance check
 | **BeautifulSoup4** | HTML parsing and cleaning |
 | **LangChain Text Splitters** | Document chunking |
 | **Google Gemini Embeddings** | Convert text into vectors |
-| **Google Gemini Flash** | Relevance checking and answer generation |
+| **Laya** | Local context-sufficiency decision |
+| **Google Gemini Flash** | Answer generation |
 | **Qdrant** | Vector storage and semantic retrieval |
 | **LiteLLM** | Unified LLM completion interface |
 | **DuckDuckGo Search** | Web-search fallback |
@@ -183,6 +184,7 @@ Gemini relevance check
 RAGAgent/
 │
 ├── app.py                 # Main Streamlit application
+├── laya_decision.py       # Local Laya context-routing layer
 ├── requirements.txt       # Python dependencies
 ├── README.md              # Project documentation
 ├── .gitignore             # Files excluded from Git
@@ -353,6 +355,43 @@ Answer
 
 If the external search path also encounters an exception, the current code contains additional Gemini fallback handling.
 
+## 💡 Laya Decision Layer
+
+The previous version used a Gemini generation call to answer a binary routing question:
+
+```text
+Can the retrieved context answer the user's question?
+→ 1 / 0
+```
+
+The current version moves that decision to a local Laya model:
+
+```text
+Question
+   ↓
+Qdrant top-k retrieval
+   ↓
+Laya (noul)
+   ↓
+P(sufficient)
+  /       \
+YES       NO
+ ↓         ↓
+Gemini   DuckDuckGo
+answer     ↓
+         Gemini
+         answer
+```
+
+Laya is loaded once with Streamlit's `st.cache_resource` and reused across requests. The routing threshold defaults to `0.70` and can be changed with:
+
+```text
+RAG_DECISION_THRESHOLD=0.70
+```
+
+The retrieved context is compacted before the Laya decision so it stays within the decision model's context window. The dedicated typed-decisions checkpoint provides a 1,024-token context window.
+
+The Gemini generation path is intentionally unchanged: Gemini still produces the grounded answer after the router selects the RAG path or the DuckDuckGo fallback.
 ## 🔍 Retrieval Details
 
 The application uses:

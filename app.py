@@ -12,6 +12,7 @@ from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import time
+from laya_decision import judge_context
 
 @st.cache_resource
 def get_qdrant_client():
@@ -257,55 +258,52 @@ def answer_question(question, client, collection_name, top_k=3):
             formatted_chunks.append(doc.payload["content"] + source_info)
         return "\n\n".join(formatted_chunks)
 
-    decision_system_prompt = """Your job is decide if a given question can be answered with a given context. 
-    If context can answer the question return 1.
-    If not return 0.
-    Context: {context}
-    """
-
-    system_prompt = """You are an expert in answering questions. Provide answers based **exclusively** on the given context. 
-
-        **Rules:**
-        1. If the question cannot be answered using the context, respond only with: "I don't know."
-        2. Do **not** infer, assume, or add information not explicitly provided in the context.
-        3. Your answers must be:
-        - **Concise**: Avoid unnecessary details.
-        - **Informative**: Focus on actionable and precise responses.
-        4. Format your response in **Markdown**.
-
-        **Context:** {context}
-
-    """
-
-    user_prompt = """
-    Question: {question}
-    Answer:"""
-
     with st.spinner("Searching for relevant information..."):
         results = search(question)
         context = format_docs(results)
 
-        # Relax the judge prompt slightly to ensure we capture relevant context
-        decision_system_prompt = """Your job is to decide if a given question can be answered, even partially, using the given context. 
-        If the context provides ANY relevant information, return 1.
-        If it is completely irrelevant, return 0.
-        Context: {context}
-        """
+        # Laya performs the binary routing decision locally, replacing
+        # the Gemini call that was previously used only as a judge.
+        try:
+            decision = judge_context(question, context)
+            has_answer = decision["sufficient"]
 
-        response = completion(
-            model="gemini/gemini-3.6-flash",
-            messages=[
-                {
-                    "content": decision_system_prompt.format(context=context),
-                    "role": "system",
-                },
-                {"content": user_prompt.format(question=question), "role": "user"},
-            ],
-            api_key=st.session_state.gemini_api_key,
-        )
-        has_answer = response.choices[0].message.content.strip().lower()
+            st.caption(
+                f"Laya context gate: P(sufficient)={decision['probability']:.2f} "
+                f"(threshold={decision['threshold']:.2f}, confidence={decision['confidence']:.2f})"
+            )
+        except Exception as laya_error:
+            # Preserve the original behavior if the local Laya model cannot
+            # load or execute in a constrained deployment environment.
+            st.warning(
+                f"Laya decision layer unavailable; falling back to Gemini judge. "
+                f"Reason: {laya_error}"
+            )
+            decision_system_prompt = """Decide whether the given question can be answered, even partially, using the given context.
+            Return 1 when the context contains enough relevant information for a grounded answer.
+            Return 0 when it does not.
+            Context: {context}
+            """
 
-        if "1" in has_answer or "yes" in has_answer:
+            judge_response = completion(
+                model="gemini/gemini-3.6-flash",
+                messages=[
+                    {
+                        "content": decision_system_prompt.format(context=context),
+                        "role": "system",
+                    },
+                    {
+                        "content": user_prompt.format(question=question),
+                        "role": "user",
+                    },
+                ],
+                api_key=st.session_state.gemini_api_key,
+            )
+            has_answer = "1" in (
+                judge_response.choices[0].message.content.strip().lower()
+            )
+
+        if has_answer:
             st.info("Found relevant information in your uploaded documents/URLs!")
             response = completion(
                 model="gemini/gemini-3.6-flash",
