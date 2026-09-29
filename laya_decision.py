@@ -23,7 +23,7 @@ os.environ.setdefault("MKL_NUM_THREADS", "2")
 import laya
 
 
-DEFAULT_THRESHOLD = 0.70
+DEFAULT_THRESHOLD = 0.54
 MAX_CONTEXT_CHARS = 3000
 # typed-decisions provides a larger 1024-token decision context than the
 # base English checkpoint and is a better fit for retrieved RAG context.
