@@ -17,6 +17,7 @@ import laya
 
 
 DEFAULT_THRESHOLD = 0.70
+MAX_CONTEXT_CHARS = 3000
 # typed-decisions provides a larger 1024-token decision context than the
 # base English checkpoint and is a better fit for retrieved RAG context.
 LAYA_MODEL = "convaiinnovations/laya-typed-decisions"
@@ -25,7 +26,7 @@ LAYA_MODEL = "convaiinnovations/laya-typed-decisions"
 @st.cache_resource(show_spinner=False)
 def get_laya_agent():
     """Load the local Laya model once and reuse it across Streamlit reruns."""
-    return laya.load(LAYA_MODEL, subfolder=LAYA_SUBFOLDER)
+    return laya.load(LAYA_MODEL)
 
 
 def get_context_threshold() -> float:
@@ -40,6 +41,24 @@ def get_context_threshold() -> float:
     return min(max(threshold, 0.0), 1.0)
 
 
+def _compact_context(context: str, max_chars: int = MAX_CONTEXT_CHARS) -> str:
+    """Keep each retrieved chunk represented while staying inside Laya's context window."""
+    chunks = [chunk.strip() for chunk in context.split("\n\n") if chunk.strip()]
+    if not chunks:
+        return context[:max_chars]
+
+    per_chunk = max(600, max_chars // len(chunks))
+    compacted = []
+
+    for chunk in chunks:
+        if len(chunk) <= per_chunk:
+            compacted.append(chunk)
+        else:
+            compacted.append(chunk[:per_chunk].rstrip() + " ...")
+
+    return "\n\n".join(compacted)[:max_chars]
+
+
 def judge_context(
     question: str,
     context: str,
@@ -47,11 +66,13 @@ def judge_context(
     """Return Laya's probability that the retrieved context is sufficient."""
     agent = get_laya_agent()
 
+    compacted_context = _compact_context(context)
+
     # Keep the state explicit and structured so the model can distinguish
     # the user's question from the retrieved evidence.
     state = {
         "question": question,
-        "context": context,
+        "context": compacted_context,
     }
 
     questions = {
