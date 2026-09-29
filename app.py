@@ -258,6 +258,24 @@ def answer_question(question, client, collection_name, top_k=3):
             formatted_chunks.append(doc.payload["content"] + source_info)
         return "\n\n".join(formatted_chunks)
 
+
+    system_prompt = """You are an expert in answering questions. Provide answers based **exclusively** on the given context.
+
+        **Rules:**
+        1. If the question cannot be answered using the context, respond only with: "I don't know."
+        2. Do **not** infer, assume, or add information not explicitly provided in the context.
+        3. Your answers must be:
+        - **Concise**: Avoid unnecessary details.
+        - **Informative**: Focus on actionable and precise responses.
+        4. Format your response in **Markdown**.
+
+        **Context:** {context}
+    """
+
+    user_prompt = """
+    Question: {question}
+    Answer:"""
+
     with st.spinner("Searching for relevant information..."):
         results = search(question)
         context = format_docs(results)
