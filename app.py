@@ -13,6 +13,10 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import time
 
+@st.cache_resource
+def get_qdrant_client():
+    return QdrantClient(path="qdrant_storage")
+
 if "client" not in st.session_state:
     st.session_state.client = None
 if "collection_name" not in st.session_state:
@@ -20,15 +24,6 @@ if "collection_name" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Auto-reconnect to persistent Qdrant database if it exists from a previous session
-if st.session_state.client is None and os.path.exists("qdrant_storage"):
-    try:
-        temp_client = QdrantClient(path="qdrant_storage")
-        if temp_client.collection_exists("agent_rag_index"):
-            st.session_state.client = temp_client
-            st.session_state.collection_name = "agent_rag_index"
-    except Exception:
-        pass
 
 
 def get_all_urls(base_url):
@@ -203,10 +198,8 @@ def process_and_index_documents(
             return None, None
         embeddings = [obj["embedding"] for obj in embeddings_objects]
 
-    if st.session_state.get("client") is not None:
-        client = st.session_state.client
-    else:
-        client = QdrantClient(path="qdrant_storage")
+    client = get_qdrant_client()
+    st.session_state.client = client
         
     collection_name = "agent_rag_index"
     VECTOR_SIZE = 3072
