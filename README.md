@@ -1,6 +1,6 @@
 # 🤖 RAGAgent — Agentic Retrieval-Augmented Generation
 
-> A Streamlit-based Agentic RAG application for asking questions over PDF documents and websites, with semantic retrieval through Qdrant, Gemini embeddings and generation, and an online-search fallback when retrieved context is not relevant.
+> A Streamlit-based Agentic RAG application that combines Qdrant semantic retrieval with a local **Laya decision layer** to determine whether retrieved context is sufficient. When it is not, the agent falls back to DuckDuckGo web search before using Gemini to generate the response.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.40.1-FF4B4B?logo=streamlit)](https://streamlit.io/)
@@ -17,7 +17,7 @@ You can:
 - 🕷️ Optionally discover same-domain links from supplied websites.
 - 🔎 Convert your data into embeddings and store them in Qdrant.
 - 💬 Ask questions through a Streamlit chat interface.
-- 🧠 Use an LLM-based relevance check before generating an answer from retrieved context.
+- 🧠 Use **Laya locally** as the context-sufficiency decision gate before answer generation.
 - 🌍 Fall back to DuckDuckGo search when indexed context is not relevant.
 - 💾 Reuse a locally persisted Qdrant collection across Streamlit sessions.
 
@@ -315,84 +315,7 @@ The application extracts text, chunks it, generates embeddings, creates the Qdra
 
 Once indexing completes, use the chat input to ask questions about your documents or websites.
 
-## 🧠 Agentic Decision Flow
-
-The application first retrieves the most similar chunks from Qdrant.
-
-It then asks Gemini whether the retrieved context contains relevant information.
-
-### Relevant context found
-
-```text
-Question
-   ↓
-Qdrant retrieval
-   ↓
-Relevant context
-   ↓
-Gemini generation
-   ↓
-Answer grounded in retrieved context
-```
-
-### Relevant context not found
-
-```text
-Question
-   ↓
-Qdrant retrieval
-   ↓
-Context judged irrelevant
-   ↓
-DuckDuckGo search
-   ↓
-Search results as context
-   ↓
-Gemini generation
-   ↓
-Answer
-```
-
-If the external search path also encounters an exception, the current code contains additional Gemini fallback handling.
-
-## 💡 Laya Decision Layer
-
-The previous version used a Gemini generation call to answer a binary routing question:
-
-```text
-Can the retrieved context answer the user's question?
-→ 1 / 0
-```
-
-The current version moves that decision to a local Laya model:
-
-```text
-Question
-   ↓
-Qdrant top-k retrieval
-   ↓
-Laya (noul)
-   ↓
-P(sufficient)
-  /       \
-YES       NO
- ↓         ↓
-Gemini   DuckDuckGo
-answer     ↓
-         Gemini
-         answer
-```
-
-Laya is loaded once with Streamlit's `st.cache_resource` and reused across requests. The routing threshold defaults to `0.70` and can be changed with:
-
-```text
-RAG_DECISION_THRESHOLD=0.70
-```
-
-The retrieved context is compacted before the Laya decision so it stays within the decision model's context window. The dedicated typed-decisions checkpoint provides a 1,024-token context window.
-
-The Gemini generation path is intentionally unchanged: Gemini still produces the grounded answer after the router selects the RAG path or the DuckDuckGo fallback.
-## 🔍 Retrieval Details
+## 🧠 Agentic Decision Flow\n\nThe core agentic behavior of RAGAgent is **context-aware routing**.\n\nThe system does not automatically trust the top Qdrant results. It first asks Laya whether those retrieved chunks contain enough information to answer the question without relying on outside knowledge.\n\n### Decision pipeline\n\n```text\nUser Question\n      ↓\nGemini Embedding\n      ↓\nQdrant Semantic Search\n      ↓\nTop-3 Retrieved Chunks\n      ↓\nLaya Context Gate\n      ↓\nP(context sufficient)\n     /              \\n  HIGH                LOW\n   ↓                   ↓\nGemini              DuckDuckGo\nRAG Answer              ↓\n                     Gemini\n                     Web Answer\n   \                   /\n    └──── Final Answer ────┘\n```\n\n### Why Laya?\n\nThe previous version used a Gemini generation call only to answer a binary routing question:\n\n```text\nCan the retrieved context answer the question?\n→ YES / NO\n```\n\nThe current architecture delegates that narrow decision to a local Laya model and keeps Gemini for open-ended answer generation.\n\n```text\nBefore:\nGemini Embedding → Qdrant → Gemini Judge → Gemini Answer\n\nNow:\nGemini Embedding → Qdrant → Laya → Gemini Answer\n                                  ↓\n                             DuckDuckGo\n```\n\n### Laya context gate\n\nThe application uses Laya's `noul` primitive for the decision:\n\n```text\nIs the retrieved context sufficient to answer the user's question\nwithout relying on outside knowledge?\n```\n\nLaya returns a probability for the `true` decision. RAGAgent compares that probability with the routing threshold.\n\nExample:\n\n```text\nP(sufficient) = 0.91\nthreshold     = 0.70\n→ Use retrieved context\n```\n\nFor an insufficient context:\n\n```text\nP(sufficient) = 0.32\nthreshold     = 0.70\n→ Search the web\n```\n\nLaya is loaded once with Streamlit's `st.cache_resource` and reused across Streamlit reruns. The current implementation retains a Gemini-judge fallback if Laya cannot load in the deployment environment.\n\n### Threshold configuration\n\nThe default routing threshold is:\n\n```text\nRAG_DECISION_THRESHOLD=0.70\n```\n\nA higher threshold sends more questions to web search. A lower threshold allows more queries to use retrieved context.\n\nThe `0.70` value is an initial engineering setting and should be evaluated on labelled question/context pairs before production use.\n\n### Web-search fallback\n\nWhen the indexed context is insufficient:\n\n```text\nQuestion\n   ↓\nQdrant Retrieval\n   ↓\nLaya: insufficient\n   ↓\nDuckDuckGo Search\n   ↓\nSearch Result Context\n   ↓\nGemini\n   ↓\nFinal Answer\n```\n\nThis creates a hybrid knowledge architecture:\n\n```text\nIndexed / private knowledge → Qdrant\nMissing / current knowledge → DuckDuckGo\nDecision / routing         → Laya\nAnswer generation          → Gemini\n```\n\n## 🔍 Retrieval Details
 
 The application uses:
 
@@ -438,39 +361,7 @@ Therefore, it uses Qdrant's local persistent storage rather than requiring a sep
 
 On a later Streamlit session, the application checks whether `qdrant_storage` exists and attempts to reconnect to the `agent_rag_index` collection.
 
-## 🧪 Example
-
-Suppose you upload:
-
-```text
-AI_Research.pdf
-```
-
-and ask:
-
-```text
-What is Retrieval-Augmented Generation?
-```
-
-The system performs:
-
-```text
-Question
-   ↓
-Embedding
-   ↓
-Qdrant search
-   ↓
-Relevant chunks from AI_Research.pdf
-   ↓
-Gemini relevance decision
-   ↓
-Gemini answer
-```
-
-If you instead ask something that is not represented in the indexed material, the application can move to the online search fallback.
-
-## 🧩 Core Components
+## 🧪 Example\n\nSuppose the user uploads `AI_Research.pdf` and asks:\n\n```text\nWhat is Retrieval-Augmented Generation?\n```\n\nQdrant retrieves:\n\n```text\nChunk 1 → RAG definition\nChunk 2 → retrieval process\nChunk 3 → generation process\n```\n\nLaya evaluates the retrieved context:\n\n```text\nP(sufficient) = 0.94\n```\n\nBecause this is above the threshold:\n\n```text\nRetrieved Context\n      ↓\n     Gemini\n      ↓\nGrounded Answer\n```\n\nNow ask a question that is not represented in the indexed documents:\n\n```text\nWhat is today's market price of NVIDIA?\n```\n\nIf Laya determines that the local context is insufficient:\n\n```text\nQdrant\n  ↓\nLaya\n  ↓\nInsufficient\n  ↓\nDuckDuckGo\n  ↓\nGemini\n  ↓\nAnswer\n```\n\nThis allows RAGAgent to use indexed knowledge when it is sufficient and use web search when it is not.\n\n## 🧩 Core Components
 
 ### `process_uploaded_pdfs()`
 
@@ -528,7 +419,7 @@ The current implementation is intentionally simple and has several areas that ca
 - Re-indexing deletes and recreates the `agent_rag_index` collection.
 - Embeddings are requested one text at a time.
 - API keys are entered through the UI rather than managed through a deployment secret manager.
-- The relevance decision is based on an LLM response parsed as `1/0` or `yes/no`.
+- The Laya routing threshold is currently an initial heuristic and should be evaluated on labelled data from the target domain.
 - The web-search fallback depends on external search availability and rate limits.
 - The local Qdrant directory can become large as the dataset grows.
 
@@ -608,4 +499,4 @@ If this project helps you understand RAG and Agentic AI, consider giving the rep
 
 ---
 
-### Built with Python, Streamlit, Qdrant & Gemini ❤️
+### Built with Python, Streamlit, Qdrant, Laya & Gemini ❤️
