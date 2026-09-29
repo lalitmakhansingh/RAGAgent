@@ -1,6 +1,7 @@
 streamlit==1.40.1
 
 # LLM + LangChain
+laya==0.3.21
 langchain==0.3.30
 langchain-core==0.3.86
 langchain-community
