@@ -19,8 +19,7 @@ import laya
 DEFAULT_THRESHOLD = 0.70
 # typed-decisions provides a larger 1024-token decision context than the
 # base English checkpoint and is a better fit for retrieved RAG context.
-LAYA_MODEL = "convaiinnovations/laya"
-LAYA_SUBFOLDER = "typed-decisions"
+LAYA_MODEL = "convaiinnovations/laya-typed-decisions"
 
 
 @st.cache_resource(show_spinner=False)
