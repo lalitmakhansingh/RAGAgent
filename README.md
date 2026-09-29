@@ -95,8 +95,8 @@ The application uses Streamlit chat components and session state to maintain the
                         Retrieved Context
                                │
                  ┌─────────────▼─────────────┐
-                 │      Gemini Judge         │
-                 │ Relevant context?         │
+                 │         Laya Gate         │
+                 │ Context sufficient?       │
                  └──────────┬───────┬────────┘
                             │       │
                           YES       NO
@@ -150,12 +150,12 @@ Qdrant semantic search
       ↓
 Top 3 relevant chunks
       ↓
-Gemini relevance check
+Laya context decision
      / \\
    YES  NO
     ↓    ↓
  Gemini  DuckDuckGo
-    ↓    ↓
+    ↓       ↓
     └─ Gemini ─┘
          ↓
     Final answer
