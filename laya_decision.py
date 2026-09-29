@@ -13,6 +13,13 @@ import os
 from typing import Any, Dict
 
 import streamlit as st
+
+# Windows/Streamlit can exercise different native-runtime paths than a
+# standalone Python process. Keep the local inference backend deterministic.
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+
 import laya
 
 
@@ -26,7 +33,12 @@ LAYA_MODEL = "convaiinnovations/laya-typed-decisions"
 @st.cache_resource(show_spinner=False)
 def get_laya_agent():
     """Load the local Laya model once and reuse it across Streamlit reruns."""
-    return laya.load(LAYA_MODEL)
+    return laya.load(
+        LAYA_MODEL,
+        device="cpu",
+        fast=False,
+        compile=False,
+    )
 
 
 def get_context_threshold() -> float:
